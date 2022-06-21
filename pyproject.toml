@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "redband"
+version = "0.0.1"
+description = "Python-first hierarchical config for machine learning"
+license = "GPL-3.0-only"
+authors = ["mhsb <michael.h.s.ball@gmail.com>"]
+homepage = 'https://github.com/michaelhball/redband'
+repository = 'https://github.com/michaelhball/redband'
+readme = "README.md"
+keywords = []
+include = ["LICENSE"]
+
+[tool.poetry.dependencies]
+python = ">=3.7,<4.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "7.1.2"
+
+[build-system]
+requires = ["poetry-core>=1.1.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 120
