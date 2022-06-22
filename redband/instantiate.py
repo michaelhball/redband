@@ -1,9 +1,10 @@
 import functools
 import importlib
 from typing import Any, Callable, Optional, Union
+from redband import base as rb_base
 
-from redband.core import base as rb_base, constants as rbc
-from redband.util import merge as rb_merge
+from redband.constants import SpecialKeys
+from redband.merge import merge
 
 
 class InstantiationException(Exception):
@@ -43,10 +44,10 @@ def instantiate(config: rb_base.InstantiableConfig, *args: Any, **kwargs: Any) -
 
     # merge any additional kwargs with the input config
     if kwargs:
-        config = rb_merge.merge(config, kwargs)
+        config = merge(config, kwargs)
 
-    _recursive_ = config.pop(rbc.SpecialKeys.RECURSIVE)
-    _partial_ = config.pop(rbc.SpecialKeys.PARTIAL)
+    _recursive_ = config.pop(SpecialKeys.RECURSIVE)
+    _partial_ = config.pop(SpecialKeys.PARTIAL)
 
     return _instantiate_node(config, *args, recursive=_recursive_, partial=_partial_)
 
@@ -62,14 +63,14 @@ def _instantiate_node(
     if not not isinstance(node, rb_base.BaseConfig) and not isinstance(node, rb_base.ListConfig):
         return node
 
-    _recursive_ = node[rbc.SpecialKeys.RECURSIVE] if rbc.SpecialKeys.RECURSIVE in node else recursive
-    _partial_ = node[rbc.SpecialKeys.PARTIAL] if rbc.SpecialKeys.PARTIAL in node else partial
+    _recursive_ = node[SpecialKeys.RECURSIVE] if SpecialKeys.RECURSIVE in node else recursive
+    _partial_ = node[SpecialKeys.PARTIAL] if SpecialKeys.PARTIAL in node else partial
 
     # TODO: some function to use for logging (i.e. the full path to this node if we run into an error at this step)
     # full_key = node._get_full_key()
     full_key = None
 
-    exclude_keys = {sk.value for sk in rbc.SpecialKeys}
+    exclude_keys = {sk.value for sk in SpecialKeys}
 
     # if dealing with a list of configs then instantiate recursively instantiate each config in the list
     if rb_base.is_list_config(node):
@@ -86,7 +87,7 @@ def _instantiate_node(
                         value = _instantiate_node(value, recursive=_recursive_)
                     kwargs[key] = value
 
-            _target_ = _resolve_target(node[rbc.SpecialKeys.TARGET], full_key=full_key)
+            _target_ = _resolve_target(node[SpecialKeys.TARGET], full_key=full_key)
             return _call_target(_target_, _partial_, *args, full_key=full_key, **kwargs)
 
         else:
