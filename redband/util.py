@@ -3,14 +3,19 @@ import os
 import pickle
 import shutil
 import tempfile
+import yaml
 from pathlib import Path
 from typing import Any
+from yaml import Loader
 
 from cloudpathlib import CloudPath, GSPath
 from contextlib import contextmanager
 from google.api_core.exceptions import NotFound
 
+from redband.constants import JSON
+
 # TODO: sort out authentication —> is it reasonable to expect the user to use these environment variables?
+# TODO: should be able to pickle directly to / from the cloud (i.e. without pickling) ?
 
 
 def _is_gcs_path(file_path: str) -> bool:
@@ -23,7 +28,6 @@ def _is_cloud_path(file_path: str) -> bool:
 
 def _is_local_path(file_path: str) -> bool:
     return not _is_cloud_path(file_path)
-
 
 
 def file_exists(file_path: str) -> bool:
@@ -56,13 +60,14 @@ def _tmp_copy_and_open(src_path: str):
         yield src_path
 
     # if it's a cloud path, copy to a local tmp directory & yield the new location
-    with _tmp_dir() as tmp_dir:
-        local_path = os.path.join(tmp_dir, os.path.basename(src_path))
-        try:
-            CloudPath(src_path).copy(local_path)
-        except NotFound as nf:
-            raise FileNotFoundError(f"File {src_path} does not exist.") from nf
-        yield local_path
+    else:
+        with _tmp_dir() as tmp_dir:
+            local_path = os.path.join(tmp_dir, os.path.basename(src_path))
+            try:
+                CloudPath(src_path).copy(local_path)
+            except NotFound as nf:
+                raise FileNotFoundError(f"File {src_path} does not exist.") from nf
+            yield local_path
 
 
 def load_pickle(file_path: str, **kwargs) -> Any:
@@ -79,3 +84,10 @@ def load_pickle(file_path: str, **kwargs) -> Any:
         else:
             with open(tmp_file, "rb") as f:
                 return pickle.load(f, **kwargs)
+
+
+def load_yaml(yaml_path: str) -> JSON:
+    """Loads a YAML file to"""
+    with _tmp_copy_and_open(yaml_path) as tmp_file:
+        with open(tmp_file, "r") as f:
+            return yaml.load(f, Loader=Loader)
