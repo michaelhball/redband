@@ -29,18 +29,18 @@ def get_args_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--config-path",
-        "-cp",
+        "--yaml-path",
+        "-yp",
         help=(
-            "Overrides the config_path specified in redband.entrypoint(). "
-            "The `config_path` can either be absolute or relative to the `.py` file containing @redband.entrypoint()"
+            "Overrides the `yaml_path` specified in redband.entrypoint(). "
+            "The `yaml_path` can either be absolute or relative to the `.py` file containing @redband.entrypoint()"
         ),
     )
 
     parser.add_argument(
-        "--config-name",
-        "-cn",
-        help="Overrides the `config_name` specified in @redband.entrypoint()",
+        "--yaml-name",
+        "-yn",
+        help="Overrides the `yaml_name` specified in @redband.entrypoint()",
     )
 
     parser.add_argument(
