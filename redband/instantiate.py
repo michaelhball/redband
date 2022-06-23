@@ -46,10 +46,10 @@ def instantiate(config: rb_base.InstantiableConfig, *args: Any, **kwargs: Any) -
     if kwargs:
         config = merge(config, kwargs)
 
-    _recursive_ = config.pop(SpecialKeys.RECURSIVE)
-    _partial_ = config.pop(SpecialKeys.PARTIAL)
+    recursive__ = config.pop(SpecialKeys.RECURSIVE)
+    partial__ = config.pop(SpecialKeys.PARTIAL)
 
-    return _instantiate_node(config, *args, recursive=_recursive_, partial=_partial_)
+    return _instantiate_node(config, *args, recursive=recursive__, partial=partial__)
 
 
 def _instantiate_node(
@@ -63,8 +63,8 @@ def _instantiate_node(
     if not not isinstance(node, rb_base.BaseConfig) and not isinstance(node, rb_base.ListConfig):
         return node
 
-    _recursive_ = node[SpecialKeys.RECURSIVE] if SpecialKeys.RECURSIVE in node else recursive
-    _partial_ = node[SpecialKeys.PARTIAL] if SpecialKeys.PARTIAL in node else partial
+    recursive__ = node[SpecialKeys.RECURSIVE] if SpecialKeys.RECURSIVE in node else recursive
+    partial__ = node[SpecialKeys.PARTIAL] if SpecialKeys.PARTIAL in node else partial
 
     # TODO: some function to use for logging (i.e. the full path to this node if we run into an error at this step)
     # full_key = node._get_full_key()
@@ -74,7 +74,7 @@ def _instantiate_node(
 
     # if dealing with a list of configs then instantiate recursively instantiate each config in the list
     if rb_base.is_list_config(node):
-        return [_instantiate_node(item, recursive=_recursive_) for item in node]
+        return [_instantiate_node(item, recursive=recursive__) for item in node]
 
     # if dealing with a regular config, optionally recursively instantiate on each key
     elif rb_base.is_dict_config(node):
@@ -83,18 +83,18 @@ def _instantiate_node(
             for key in node.keys():
                 if key not in exclude_keys:
                     value = node[key]
-                    if _recursive_:
-                        value = _instantiate_node(value, recursive=_recursive_)
+                    if recursive__:
+                        value = _instantiate_node(value, recursive=recursive__)
                     kwargs[key] = value
 
-            _target_ = _resolve_target(node[SpecialKeys.TARGET], full_key=full_key)
-            return _call_target(_target_, _partial_, *args, full_key=full_key, **kwargs)
+            target__ = _resolve_target(node[SpecialKeys.TARGET], full_key=full_key)
+            return _call_target(target__, partial__, *args, full_key=full_key, **kwargs)
 
         else:
             instantiated_node = node.copy()
             for key in node.keys():
-                if key not in exclude_keys and _recursive_:
-                    instantiated_node[key] = _instantiate_node(node[key], recursive=_recursive_)
+                if key not in exclude_keys and recursive__:
+                    instantiated_node[key] = _instantiate_node(node[key], recursive=recursive__)
             return instantiated_node
 
     # we should never get here, the exit conditions for non-config nodes are defined above
@@ -103,26 +103,26 @@ def _instantiate_node(
 
 
 def _call_target(
-    _target_: Target,
-    _partial_: bool,
+    target__: Target,
+    partial__: bool,
     *args: Any,
     full_key: Optional[str] = None,
     **kwargs: Any,
 ):
     """Call target (type) with args and kwargs."""
-    if _partial_:
+    if partial__:
         try:
-            return functools.partial(_target_, *args, **kwargs)
+            return functools.partial(target__, *args, **kwargs)
         except Exception as e:
-            error_message = f"Error in creating partial({_convert_target_to_string(_target_)}, ...) object:\n{repr(e)}"
+            error_message = f"Error in creating partial({_convert_target_to_string(target__)}, ...) object:\n{repr(e)}"
             if full_key is not None:
                 error_message += f"\nfull_key: {full_key}"
             raise InstantiationException(error_message) from e
     else:
         try:
-            return _target_(*args, **kwargs)
+            return target__(*args, **kwargs)
         except Exception as e:
-            error_message = f"Error in call to target '{_convert_target_to_string(_target_)}':\n{repr(e)}"
+            error_message = f"Error in call to target '{_convert_target_to_string(target__)}':\n{repr(e)}"
             if full_key:
                 error_message += f"\nfull_key: {full_key}"
             raise InstantiationException(error_message) from e
