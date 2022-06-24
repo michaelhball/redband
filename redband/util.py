@@ -12,7 +12,7 @@ from cloudpathlib import CloudPath, GSPath
 from contextlib import contextmanager
 from google.api_core.exceptions import NotFound
 
-from redband.constants import JSON
+from redband.typing import JSON
 
 # TODO: sort out authentication —> is it reasonable to expect the user to use these environment variables?
 # TODO: should be able to pickle directly to / from the cloud (i.e. without pickling) ?
