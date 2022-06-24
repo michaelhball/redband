@@ -91,3 +91,7 @@ def load_yaml(yaml_path: str) -> JSON:
     with _tmp_copy_and_open(yaml_path) as tmp_file:
         with open(tmp_file, "r") as f:
             return yaml.load(f, Loader=Loader)
+
+
+def save_to_yaml(yaml_obj: JSON, file_path: str) -> None:
+    pass

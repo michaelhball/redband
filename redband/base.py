@@ -1,13 +1,11 @@
 import inspect
-import yaml
 from _collections_abc import dict_keys
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
 from pydantic.fields import ModelField
+from pydantic_yaml import YamlModel as BaseModel
 
-from redband.typing import DictStrAny
-from redband.util import load_pickle
+from redband.util import load_yaml, save_to_yaml
 
 
 class BaseConfig(BaseModel):
@@ -80,37 +78,18 @@ class BaseConfig(BaseModel):
         delattr(self, attr_name)
         return attr_value
 
-    def key_is_missing(self, key: str) -> bool:
-        """TODO: documentation (+ do I need this) ?"""
-        return is_missing(self[key])
-
-    def _clean_dict(self, dict_: DictStrAny) -> DictStrAny:
-        new_dict = {}
-        for key, value in dict_.items():
-            if not key.endswith("__"):
-                if isinstance(value, dict):
-                    value = self._clean_dict(value)
-                new_dict[key] = value
-        return new_dict
-
-    def dict_clean(self, *args, **kwargs) -> DictStrAny:
-        return self._clean_dict(self.dict(*args, **kwargs))
-
-    def to_yaml(self, sort_keys: bool = False) -> str:
+    def yaml(self, sort_keys: bool = False) -> str:
         """Returns a YAML dump of this config, optionally sorting keys alphabetically."""
-        return yaml.dump(
-            self.dict_clean(),
-            default_flow_style=False,
-            allow_unicode=True,
-            sort_keys=sort_keys,
-        )
+        # TODO: pass more expressivity through here + enable `sort_keys`
+        return super().yaml(exclude={"recursive__", "partial__"})
 
     @classmethod
-    def from_pickle(cls, file_path: str) -> "BaseConfig":
-        """#TODO: docstring"""
-        _loaded = load_pickle(file_path)
-        assert isinstance(_loaded, cls), f"The `file_path` you are loading from must contain a {cls.__name__} instance"
-        return _loaded
+    def from_file(cls, file_path: str) -> "BaseConfig":
+        return cls.parse_raw(load_yaml(file_path))
+
+    def save(self, file_path: str) -> None:
+        # TODO: add more expressivity here
+        save_to_yaml(self.yaml(), file_path)
 
 
 class InstantiableConfig(BaseConfig):
@@ -120,6 +99,11 @@ class InstantiableConfig(BaseConfig):
     partial__: bool = False
 
     # TODO: add `instantiate` method
+
+
+# TODO: but I still think I need to handle the case where the user doesn't use this (e.g. at serialization time)
+class EntrypointConfig(BaseConfig):
+    group__: str = "entrypoint"
 
 
 class ListConfig(List[BaseConfig]):
