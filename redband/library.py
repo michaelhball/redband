@@ -1,3 +1,4 @@
+from dataclasses import make_dataclass
 import importlib
 import pkgutil
 from typing import Dict, List, Type, Union
@@ -21,8 +22,7 @@ ConfigGroup = Dict[str, Union[Type[BaseConfig], "ConfigGroup"]]
 ConfigTypeOrList = Union[ConfigTypeOrSubclass, List[ConfigTypeOrSubclass]]
 
 
-class ConfigLibrary(object):
-    __metaclass__ = Singleton
+class ConfigLibrary(object, metaclass=Singleton):
 
     configs: Dict[str, ConfigGroup] = {}
 
@@ -30,11 +30,18 @@ class ConfigLibrary(object):
         """#TODO: docstring"""
 
         _cur_config_group = self.configs
-        for g in config.group().split("."):
+        for g in config._group().split("."):
             if g not in _cur_config_group:
                 _cur_config_group[g] = {}
             _cur_config_group = _cur_config_group[g]
-        _cur_config_group[config.name()] = config
+        _cur_config_group[config._name()] = config
+
+    def get_config_group(self, group: str) -> ConfigGroup:
+        """TODO: docstring"""
+        _cur_config_group = self.configs
+        for g in group.split("."):
+            _cur_config_group = _cur_config_group[g]
+        return _cur_config_group
 
 
 def _add_config_to_library(config: Type[BaseConfig], config_lib: ConfigLibrary):
