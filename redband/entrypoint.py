@@ -9,11 +9,11 @@ from redband.cli import get_args_parser
 from redband.library import ConfigLibrary, fill_config_library
 from redband.merge import merge
 from redband.typing import DictStrAny, JSON
-from redband.util import load_yaml
+from redband import util as rb_util
 
 
 EntrypointFunc = Callable[[Type[BaseConfig]], Any]
-ConfigDict = DictStrAny  # TODO: make annotation better
+ConfigDict = DictStrAny
 
 
 class ConfigCompositionException(Exception):
@@ -46,13 +46,13 @@ def _get_yaml_dir_and_name(
             _yaml_path = Path(yaml_path)
             if not Path.is_absolute(_yaml_path):
                 _yaml_path = yaml_dir / _yaml_path
-            yaml_dir = _yaml_path
+            yaml_dir = str(_yaml_path)
             if Path.is_file(_yaml_path):
-                yaml_name = Path(_yaml_path.name).stem
-                yaml_dir = _yaml_path.parent
+                yaml_name = str(Path(_yaml_path.name).stem)
+                yaml_dir = str(_yaml_path.parent)
             break
 
-    return str(yaml_dir), str(yaml_name)
+    return yaml_dir, yaml_name
 
 
 def _get_yaml_name(entrypoint_yaml_name: Optional[str], cli_yaml_name: Optional[str]) -> Optional[str]:
@@ -97,7 +97,7 @@ def _compose_yaml(
     # find YAML & load —> JSON dict
     valid_yamls = sorted(Path(yaml_dir).glob(f"{yaml_name}.y*ml"))
     assert len(valid_yamls) == 1, "There is more than one matching YAML in your specified `yaml_path`"
-    yaml_dict: Dict[str, JSON] = load_yaml(str(valid_yamls[0]))
+    yaml_dict: Dict[str, JSON] = rb_util.load_yaml(str(valid_yamls[0]))
 
     config_lib = ConfigLibrary()
     config_dict = {}
@@ -135,9 +135,24 @@ def _compose(
     entrypoint_yaml_path: Optional[str] = None,
     config_lib_dir: Optional[str] = None,
 ) -> Type[BaseConfig]:
-    """TODO:docstring"""
+    """This function
+        1) composes an entrypoint config based on a combination of the config classes defined by the user,
+            an entrypoint YAML, and any command-line overrides, and
+        2) validates the config ensuring that all parameters are valid and none that are required are missing
 
-    # TODO: validate that the yaml_name and yaml_path arguments are formatted correctly
+    Args:
+        cli_args: the parsed command-line arguments
+        entrypoint_func: the callable object that was decorated as a redband entrypoint
+        entrypoint_yaml_name:
+            optional name of the entrypoint YAML specified as an argument to the entrypoint decorator
+        entrypoint_yaml_path:
+            optional path to the entrypoint YAML specified as an argument to the entrypoint decorator
+        config_lib_dir:
+            an optional path to the directory in which the user defined their configs,
+            specified as an argument to the entrypoint decorator
+
+    Returns the composed, validated config: an instantiated instance of a BaseConfig subclass
+    """
 
     # find the entrypoint config type based on the users type annotation + set 'entrypoint' group
     entrypoint_func_signature = inspect.signature(entrypoint_func)
@@ -153,11 +168,10 @@ def _compose(
         return merge(entrypoint_config_class.from_pickle(cli_args.config), overrides)
 
     entrypoint_file_path = inspect.getfile(entrypoint_func)
-    task_name = _get_task_name(entrypoint_file_path)
+    # task_name = _get_task_name(entrypoint_file_path)
 
     # find all user configs & construct the Singleton ConfigLibrary
     fill_config_library(entrypoint_file_path, cli_args.config_lib_dir or config_lib_dir)
-    assert False
 
     # get entrypoint YAML dir and name, & if necessary resolve the YAML config
     yaml_name = entrypoint_yaml_name
@@ -177,17 +191,25 @@ def _compose(
 
 
 def entrypoint(
+    _entrypoint_func: Optional[EntrypointFunc] = None,
     yaml_name: Optional[str] = None,
     yaml_path: Optional[str] = None,
     config_lib_dir: Optional[str] = None,
 ) -> Callable[[EntrypointFunc], Any]:
     """#TODO: docstring"""
 
-    # TODO: enable this to work with or without arguments (e.g. if user doesn't need to specify anything)
+    # validate that arguments are formatted correctly
+    assert yaml_name is None or (
+        "." not in yaml_name and "/" not in yaml_name
+    ), "Your 'yaml_name' must be the file name of your entrypoint YAML, excluding the suffix"
+    assert yaml_path is None or rb_util.file_exists(
+        yaml_path
+    ), "Your `yaml_path` must be that path to a file that exists"
+    assert config_lib_dir is not None or (
+        rb_util._is_local_path(config_lib_dir) and rb_util.file_exists(config_lib_dir)
+    ), "If you pass a `config_lib_dir` it must be the path to a local _directory_ that exists"
 
     def entrypoint_decorator(entrypoint_func: EntrypointFunc) -> Callable[[], None]:
-        """TODO: docstring"""
-
         @functools.wraps(entrypoint_func)
         def decorated_entrypoint(config_passthrough: Optional[BaseConfig] = None) -> Any:
             if config_passthrough is not None:
@@ -208,4 +230,4 @@ def entrypoint(
 
         return decorated_entrypoint
 
-    return entrypoint_decorator
+    return entrypoint_decorator if _entrypoint_func is None else entrypoint_decorator(_entrypoint_func)

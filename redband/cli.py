@@ -5,6 +5,7 @@ def get_args_parser() -> argparse.ArgumentParser:
     from . import __version__
 
     # TODO: Can I use CLICK here instead of ArgumentParser ??
+    # main reason: load environment variables for some of these (e.g. config lib dir)
 
     parser = argparse.ArgumentParser(add_help=False, description="RedBand")
     parser.add_argument("--help", "-h", action="store_true", help="Application's help")
@@ -58,12 +59,10 @@ def get_args_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    # TODO: add this back later
-    # parser.add_argument(
-    #     "--multirun",
-    #     "-m",
-    #     action="store_true",
-    #     help="Run multiple jobs with the configured launcher and sweeper",
-    # )
+    parser.add_argument(
+        "--config-lib-dir",
+        "-cld",
+        help="A directory in which to look for user-defined configs s.t. they can be added to the `ConfigLibrary`",
+    )
 
     return parser
