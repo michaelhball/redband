@@ -73,7 +73,7 @@ class BaseConfig(BaseModel):
         return self.dict().keys()
 
     def pop(self, attr_name: str) -> Any:
-        """TODO: documentation"""
+        """Pops a parameter from this config instance."""
         attr_value = self[attr_name]
         delattr(self, attr_name)
         return attr_value
@@ -84,7 +84,7 @@ class BaseConfig(BaseModel):
         return super().yaml(exclude={"recursive__", "partial__"})
 
     @classmethod
-    def from_file(cls, file_path: str) -> "BaseConfig":
+    def load(cls, file_path: str) -> "BaseConfig":
         return cls.parse_raw(load_yaml(file_path))
 
     def save(self, file_path: str) -> None:
@@ -110,7 +110,7 @@ class ListConfig(List[BaseConfig]):
     ...
 
 
-_REDBAND_CONFIG_CLASSES = {BaseConfig, InstantiableConfig}
+REDBAND_CONFIG_CLASSES = {BaseConfig, InstantiableConfig, EntrypointConfig}
 
 
 def is_config_node(node: Any) -> bool:
