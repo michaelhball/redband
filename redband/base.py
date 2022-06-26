@@ -1,11 +1,11 @@
 import inspect
 from _collections_abc import dict_keys
-from typing import Any, Dict, List, Optional
+from typing import AbstractSet, Any, Dict, List, Mapping, Optional, Union
 
 from pydantic.fields import ModelField
 from pydantic_yaml import YamlModel as BaseModel
 
-from redband.util import load_yaml, save_to_yaml
+from redband.util import load_yaml, save_yaml
 
 
 class BaseConfig(BaseModel):
@@ -80,16 +80,16 @@ class BaseConfig(BaseModel):
 
     def yaml(self, sort_keys: bool = False) -> str:
         """Returns a YAML dump of this config, optionally sorting keys alphabetically."""
-        # TODO: pass more expressivity through here + enable `sort_keys`
+        # TODO: expressiveness
         return super().yaml(exclude={"recursive__", "partial__"})
 
     @classmethod
     def load(cls, file_path: str) -> "BaseConfig":
-        return cls.parse_raw(load_yaml(file_path))
+        return cls(**load_yaml(file_path))
 
-    def save(self, file_path: str) -> None:
-        # TODO: add more expressivity here
-        save_to_yaml(self.yaml(), file_path)
+    def save(self, file_path: str, exclude: Union[AbstractSet[str], Mapping[str, Any]] = None) -> None:
+        """Serialize this config object as a YAML. Refer to `super().dict()` for argument details."""
+        save_yaml(self.dict(exclude=exclude), file_path)
 
 
 class InstantiableConfig(BaseConfig):

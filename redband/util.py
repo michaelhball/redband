@@ -12,7 +12,7 @@ from cloudpathlib import CloudPath, GSPath
 from contextlib import contextmanager
 from google.api_core.exceptions import NotFound
 
-from redband.typing import JSON
+from redband.typing import DictStrAny, JSON
 
 # TODO: sort out authentication —> is it reasonable to expect the user to use these environment variables?
 # TODO: should be able to pickle directly to / from the cloud (i.e. without pickling) ?
@@ -82,12 +82,10 @@ def _tmp_copy_on_close(dst_path: str, local_filename: Optional[str] = "file") ->
     with _tmp_dir() as tmp_dir:
         local_path = os.path.join(tmp_dir, local_filename)
         yield local_path
-        _path_cls = Path if _is_local_path(dst_path) else CloudPath
-        try:
-            _path_cls(local_path).copy(dst_path)
-        except:
-            # TODO: add specific errors + handling
-            pass
+        if _is_local_path(dst_path):
+            shutil.copy(local_path, dst_path)
+        else:
+            CloudPath(local_path).copy(dst_path)
 
 
 def load_pickle(file_path: str, **kwargs) -> Any:
@@ -113,8 +111,8 @@ def load_yaml(yaml_path: str) -> JSON:
             return yaml.load(stream=f, Loader=Loader)
 
 
-def save_to_yaml(yaml_obj: JSON, file_path: str) -> None:
+def save_yaml(yaml_obj: DictStrAny, file_path: str) -> None:
     """Saves a YAML object to file"""
     with _tmp_copy_on_close(file_path) as tmp_file:
         with open(tmp_file, "w") as f:
-            yaml.dump(data=yaml_obj, stream=f, Dumper=Dumper)
+            yaml.dump(data=yaml_obj, stream=f, Dumper=Dumper, line_break="\n")
