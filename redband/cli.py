@@ -1,11 +1,13 @@
 import argparse
+import os
 
 
 def get_args_parser() -> argparse.ArgumentParser:
-    from . import __version__
+    """Returns the redband argparse command-line parser.
 
-    # TODO: Can I use CLICK here instead of ArgumentParser ??
-    # main reason: load environment variables for some of these (e.g. config lib dir)
+    This implementation was taken almost directly from https://github.com/facebookresearch/hydra.
+    """
+    from . import __version__
 
     parser = argparse.ArgumentParser(add_help=False, description="RedBand")
     parser.add_argument("--help", "-h", action="store_true", help="Application's help")
@@ -34,7 +36,8 @@ def get_args_parser() -> argparse.ArgumentParser:
         "-yp",
         help=(
             "Overrides the `yaml_path` specified in redband.entrypoint(). "
-            "The `yaml_path` can either be absolute or relative to the `.py` file containing @redband.entrypoint()"
+            "The `yaml_path` can be either the absolute or relative path to the `.py` file "
+            "containing @redband.entrypoint()"
         ),
     )
 
@@ -45,9 +48,10 @@ def get_args_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--config-dir",
-        "-cd",
-        help="Adds an additional config dir to the config search path",
+        "--config-lib-dir",
+        "-cld",
+        help="A directory in which to look for user-defined configs s.t. they can be added to the `ConfigLibrary`",
+        default=os.getenv("RB_CONFIG_LIB_DIR"),
     )
 
     parser.add_argument(
@@ -57,12 +61,6 @@ def get_args_parser() -> argparse.ArgumentParser:
             "Runs the entrypoint with a serialized config object, bypassing all config composition "
             "(all other command-line arguments are ignored)"
         ),
-    )
-
-    parser.add_argument(
-        "--config-lib-dir",
-        "-cld",
-        help="A directory in which to look for user-defined configs s.t. they can be added to the `ConfigLibrary`",
     )
 
     return parser
