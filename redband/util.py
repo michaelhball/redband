@@ -5,8 +5,8 @@ import shutil
 import tempfile
 import yaml
 from pathlib import Path
-from typing import Any
-from yaml import Loader
+from typing import Any, Optional
+from yaml import Dumper, Loader
 
 from cloudpathlib import CloudPath, GSPath
 from contextlib import contextmanager
@@ -49,10 +49,10 @@ def _tmp_dir():
 
 
 @contextmanager
-def _tmp_copy_and_open(src_path: str):
+def _tmp_copy_on_open(src_path: str) -> str:
     """This function allows opening a file from either local or remote source via first copying it to
     a tmp directory. Usage:
-        with tmp_copy_and_open("gs://[...]") as tmp_path:
+        with _tmp_copy_on_open("gs://[...]") as tmp_path:
             df = pd.read_csv(tmp_path)
     """
     # we don't need to do any copying if the file is already local
@@ -70,6 +70,26 @@ def _tmp_copy_and_open(src_path: str):
             yield local_path
 
 
+@contextmanager
+def _tmp_copy_on_close(dst_path: str, local_filename: Optional[str] = "file") -> str:
+    """This function allows saving a file to either a local or remote source via first copying it to
+    a tmp directrory. When the returned `file_path` is closed, the object that was saved to the
+    temporary path is copied to the actual destination. Usage:
+        with _tmp_copy_on_close("gs://[...]") as tmp_path:
+            with open(tmp_file, "w") as f:
+                yaml.dump(...)
+    """
+    with _tmp_dir() as tmp_dir:
+        local_path = os.path.join(tmp_dir, local_filename)
+        yield local_path
+        _path_cls = Path if _is_local_path(dst_path) else CloudPath
+        try:
+            _path_cls(local_path).copy(dst_path)
+        except:
+            # TODO: add specific errors + handling
+            pass
+
+
 def load_pickle(file_path: str, **kwargs) -> Any:
     """Load a pickled object from a given file_path, either local or cloud."""
 
@@ -77,7 +97,7 @@ def load_pickle(file_path: str, **kwargs) -> Any:
         with CloudPath(file_path).open("rb") as f:
             return pickle.load()
 
-    with _tmp_copy_and_open(file_path) as tmp_file:
+    with _tmp_copy_on_open(file_path) as tmp_file:
         if file_path.endswith(".pklz"):
             with bz2.BZ2File(tmp_file, "r") as f:
                 return pickle.load(f, **kwargs)
@@ -87,11 +107,14 @@ def load_pickle(file_path: str, **kwargs) -> Any:
 
 
 def load_yaml(yaml_path: str) -> JSON:
-    """Loads a YAML file to"""
-    with _tmp_copy_and_open(yaml_path) as tmp_file:
+    """Loads a YAML file to JSON"""
+    with _tmp_copy_on_open(yaml_path) as tmp_file:
         with open(tmp_file, "r") as f:
-            return yaml.load(f, Loader=Loader)
+            return yaml.load(stream=f, Loader=Loader)
 
 
 def save_to_yaml(yaml_obj: JSON, file_path: str) -> None:
-    pass
+    """Saves a YAML object to file"""
+    with _tmp_copy_on_close(file_path) as tmp_file:
+        with open(tmp_file, "w") as f:
+            yaml.dump(data=yaml_obj, stream=f, Dumper=Dumper)

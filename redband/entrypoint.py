@@ -1,10 +1,11 @@
+import argparse
 import functools
 import inspect
 import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from redband.base import BaseConfig, is_config_node
+from redband.base import BaseConfig, EntrypointConfig, is_config_node
 from redband.cli import get_args_parser
 from redband.library import ConfigLibrary, fill_config_library
 from redband.merge import merge
@@ -129,7 +130,7 @@ def _compose_yaml(
 
 
 def _compose(
-    cli_args: Any,  # TODO: add proper annotation
+    cli_args: argparse.Namespace,
     entrypoint_func: EntrypointFunc,
     entrypoint_yaml_name: Optional[str] = None,
     entrypoint_yaml_path: Optional[str] = None,
@@ -141,7 +142,7 @@ def _compose(
         2) validates the config ensuring that all parameters are valid and none that are required are missing
 
     Args:
-        cli_args: the parsed command-line arguments
+        cli_args: the namespace containing parsed command-line arguments
         entrypoint_func: the callable object that was decorated as a redband entrypoint
         entrypoint_yaml_name:
             optional name of the entrypoint YAML specified as an argument to the entrypoint decorator
@@ -156,16 +157,19 @@ def _compose(
 
     # find the entrypoint config type based on the users type annotation + set 'entrypoint' group
     entrypoint_func_signature = inspect.signature(entrypoint_func)
-    assert len(entrypoint_func_signature.parameters) == 1
+    assert (
+        len(entrypoint_func_signature.parameters) == 1
+    ), "Your decorated entrypoint function should expect only a single argument, the resolved config object"
     entrypoint_config_class: Type[BaseConfig] = list(entrypoint_func_signature.parameters.values())[0].annotation
-    entrypoint_config_class._add_fields(group__=(str, "entrypoint"))
+    if not isinstance(entrypoint_config_class, EntrypointConfig):
+        entrypoint_config_class._add_fields(group__=(str, "entrypoint"))
 
     # compose overrides into an override dict
     overrides = _compose_overrides(cli_args.overrides)
 
     # if we were passed a config, compose that directly (with optional overrides) and return, ignoring other cli_args
     if cli_args.config is not None:
-        return merge(entrypoint_config_class.from_pickle(cli_args.config), overrides)
+        return merge(entrypoint_config_class.load(cli_args.config), overrides)
 
     entrypoint_file_path = inspect.getfile(entrypoint_func)
     # task_name = _get_task_name(entrypoint_file_path)
@@ -205,7 +209,7 @@ def entrypoint(
     assert yaml_path is None or rb_util.file_exists(
         yaml_path
     ), "Your `yaml_path` must be that path to a file that exists"
-    assert config_lib_dir is not None or (
+    assert config_lib_dir is None or (
         rb_util._is_local_path(config_lib_dir) and rb_util.file_exists(config_lib_dir)
     ), "If you pass a `config_lib_dir` it must be the path to a local _directory_ that exists"
 
