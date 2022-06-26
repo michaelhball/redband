@@ -133,6 +133,7 @@ def _compose(
     entrypoint_func: EntrypointFunc,
     entrypoint_yaml_name: Optional[str] = None,
     entrypoint_yaml_path: Optional[str] = None,
+    config_lib_dir: Optional[str] = None,
 ) -> Type[BaseConfig]:
     """TODO:docstring"""
 
@@ -155,20 +156,13 @@ def _compose(
     task_name = _get_task_name(entrypoint_file_path)
 
     # find all user configs & construct the Singleton ConfigLibrary
-    # TODO: find a better way (e.g. env vars) to pass a dir
-    CONFIG_LIB_DIR = "test/dooter"
-    fill_config_library(CONFIG_LIB_DIR)
-
-    # TODO: FYI something I just thought of, I have to instantiate (meaning literally instantiate the class)
-    # the configs all the way down the tree, not only the topmost one (so we recursively validate everything).
+    fill_config_library(entrypoint_file_path, cli_args.config_lib_dir or config_lib_dir)
+    assert False
 
     # get entrypoint YAML dir and name, & if necessary resolve the YAML config
     yaml_name = entrypoint_yaml_name
     yaml_dir, _yaml_name = _get_yaml_dir_and_name(entrypoint_file_path, entrypoint_yaml_path, cli_args.yaml_path)
-    if yaml_name is None:
-        yaml_name = _yaml_name
-    if yaml_name is None:
-        yaml_name = _get_yaml_name(entrypoint_yaml_name, cli_args.yaml_name)
+    yaml_name = yaml_name or _yaml_name or _get_yaml_name(entrypoint_yaml_name, cli_args.yaml_name)
 
     # compose YAML, merge with overrides, & validate
     yaml_config_dict = _compose_yaml(entrypoint_config_class, yaml_dir, yaml_name)
@@ -185,6 +179,7 @@ def _compose(
 def entrypoint(
     yaml_name: Optional[str] = None,
     yaml_path: Optional[str] = None,
+    config_lib_dir: Optional[str] = None,
 ) -> Callable[[EntrypointFunc], Any]:
     """#TODO: docstring"""
 
@@ -206,6 +201,7 @@ def entrypoint(
                     entrypoint_func=entrypoint_func,
                     entrypoint_yaml_name=yaml_name,
                     entrypoint_yaml_path=yaml_path,
+                    config_lib_dir=config_lib_dir,
                 )
 
             entrypoint_func(config)
