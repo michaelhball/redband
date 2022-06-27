@@ -91,11 +91,8 @@ class BaseConfig(BaseModel):
 
     @classmethod
     def _to_config_dict(cls) -> DictStrAny:
-        """Converts config to a dict representation."""
-        config_dict = {}
-        for k, v in cls.__fields__.items():
-            config_dict[k] = v.get_default()
-        return config_dict
+        """Converts config _class_ to a dict representation (self.dict() only works for a config _instance_)."""
+        return {k: v.get_default() for k, v in cls.__fields__.items()}
 
     def __getitem__(self, attr_name: str) -> Any:
         return getattr(self, attr_name)
