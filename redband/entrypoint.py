@@ -8,8 +8,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 from redband.base import BaseConfig, EntrypointConfig, is_config_node
 from redband.cli import get_args_parser
 from redband.library import ConfigLibrary, fill_config_library
-from redband.merge import merge
-from redband.typing import DictStrAny, JSON
+from redband.merge import merge, merge_dicts
+from redband.typing import ConfigFields, DictStrAny, JSON
 from redband import util as rb_util
 
 
@@ -64,9 +64,31 @@ def _get_yaml_name(entrypoint_yaml_name: Optional[str], cli_yaml_name: Optional[
         return yaml_name
 
 
-def _compose_overrides(overrides: List[str]) -> DictStrAny:
-    """#TODO: docstring"""
-    return {}
+def _compose_overrides(entrypoint_config_class_fields: ConfigFields, overrides: List[str]) -> DictStrAny:
+    """#TODO: docstring + error handling"""
+    config_lib: ConfigLibrary = ConfigLibrary()
+    config_dict = {}
+    for override_str in overrides:
+        assert (
+            "=" in override_str and override_str.count("=") == 1
+        ), "Your command-line overrides must be of the form '<key>=<value>'"
+
+        key, value = override_str.split("=")
+        entrypoint_key, *nested_keys = key.split(".")
+        config_field = entrypoint_config_class_fields[entrypoint_key]
+        config_field_type = config_field.type_
+
+        if len(nested_keys) == 0:
+            if is_config_node(config_field_type):
+                config_group = config_lib.get_config_group(config_field_type._group())
+                value = config_group[value]
+            config_dict[entrypoint_key] = value
+
+        else:
+            # TODO:
+            ...
+
+    return config_dict
 
 
 def _validate_config_dict(node: Union[Any, Type[BaseConfig], ConfigDict]) -> ConfigDict:
@@ -86,7 +108,9 @@ def _validate_config_dict(node: Union[Any, Type[BaseConfig], ConfigDict]) -> Con
 
 
 def _compose_yaml(
-    entrypoint_config_class: Type[BaseConfig], yaml_dir: str, yaml_name: Optional[str] = None
+    entrypoint_config_class_fields: ConfigFields,
+    yaml_dir: str,
+    yaml_name: Optional[str] = None,
 ) -> ConfigDict:
     """#TODO: docstring"""
 
@@ -100,7 +124,7 @@ def _compose_yaml(
     assert len(valid_yamls) == 1, "There is more than one matching YAML in your specified `yaml_path`"
     yaml_dict: Dict[str, JSON] = rb_util.load_yaml(str(valid_yamls[0]))
 
-    config_lib = ConfigLibrary()
+    config_lib: ConfigLibrary = ConfigLibrary()
     config_dict = {}
 
     # iterate through YAML items, merging each into the `config_dict`
@@ -108,7 +132,7 @@ def _compose_yaml(
         entrypoint_key, *nested_keys = key.split(".")
 
         # get information about field in entrypoint config
-        config_field = entrypoint_config_class.__fields__[entrypoint_key]
+        config_field = entrypoint_config_class_fields[entrypoint_key]
         config_field_type = config_field.type_
 
         # adding of a single parameter, either a config or parameter node
@@ -155,6 +179,11 @@ def _compose(
     Returns the composed, validated config: an instantiated instance of a BaseConfig subclass
     """
 
+    entrypoint_file_path = inspect.getfile(entrypoint_func)
+
+    # find all user configs & construct the Singleton ConfigLibrary
+    fill_config_library(entrypoint_file_path, cli_args.config_lib_dir or config_lib_dir)
+
     # find the entrypoint config type based on the users type annotation + set 'entrypoint' group
     entrypoint_func_signature = inspect.signature(entrypoint_func)
     assert (
@@ -163,31 +192,24 @@ def _compose(
     entrypoint_config_class: Type[BaseConfig] = list(entrypoint_func_signature.parameters.values())[0].annotation
     if not isinstance(entrypoint_config_class, EntrypointConfig):
         entrypoint_config_class._add_fields(group__=(str, "entrypoint"))
+    entrypoint_config_class_fields = entrypoint_config_class.__fields__
 
-    # compose overrides into an override dict
-    overrides = _compose_overrides(cli_args.overrides)
+    # compose overrides into a config_dict
+    overrides_config_dict = _compose_overrides(entrypoint_config_class_fields, cli_args.overrides)
 
     # if we were passed a config, compose that directly (with optional overrides) and return, ignoring other cli_args
     if cli_args.config is not None:
-        return merge(entrypoint_config_class.load(cli_args.config), overrides)
+        return merge(entrypoint_config_class.load(cli_args.config), overrides_config_dict)
 
-    entrypoint_file_path = inspect.getfile(entrypoint_func)
-    # task_name = _get_task_name(entrypoint_file_path)
-
-    # find all user configs & construct the Singleton ConfigLibrary
-    fill_config_library(entrypoint_file_path, cli_args.config_lib_dir or config_lib_dir)
-
-    # get entrypoint YAML dir and name, & if necessary resolve the YAML config
+    # work out entrypoint YAML dir and name &, if necessary, resolve the YAML config
     yaml_name = entrypoint_yaml_name
     yaml_dir, _yaml_name = _get_yaml_dir_and_name(entrypoint_file_path, entrypoint_yaml_path, cli_args.yaml_path)
     yaml_name = yaml_name or _yaml_name or _get_yaml_name(entrypoint_yaml_name, cli_args.yaml_name)
+    yaml_config_dict = _compose_yaml(entrypoint_config_class_fields, yaml_dir, yaml_name)
 
-    # compose YAML, merge with overrides, & validate
-    yaml_config_dict = _compose_yaml(entrypoint_config_class, yaml_dir, yaml_name)
-    config_dict = yaml_config_dict  # TODO: merge with overrides here
+    # merge entrypoint YAML and overrides config dicts with the entrypoint config class, & validate
+    config_dict = merge_dicts(yaml_config_dict, overrides_config_dict)
     config_dict = _validate_config_dict(config_dict)
-
-    # merge YAML + overrides with entrypoint config class, & validate
     entrypoint_config = entrypoint_config_class(**config_dict)
 
     return entrypoint_config
@@ -257,16 +279,19 @@ def entrypoint(
             else:
                 # compose a config object from the entrypoint_config_type base class, the entrypoint
                 # YAML, and any command-line overrides
-                args_parser = get_args_parser()
+                cli_args = get_args_parser().parse_args()
                 config = _compose(
-                    args_parser.parse_args(),
+                    cli_args,
                     entrypoint_func=entrypoint_func,
                     entrypoint_yaml_name=yaml_name,
                     entrypoint_yaml_path=yaml_path,
                     config_lib_dir=config_lib_dir,
                 )
 
-            entrypoint_func(config)
+            if cli_args.show:
+                print(config.yaml())
+            else:
+                entrypoint_func(config)
 
         return decorated_entrypoint
 
