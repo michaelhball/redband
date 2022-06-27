@@ -28,6 +28,7 @@ def get_args_parser() -> argparse.ArgumentParser:
         "--show",
         "-s",
         action="store_true",
+        default=False,
         help="Display config instead of running entrypoint",
     )
 

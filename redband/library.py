@@ -6,7 +6,7 @@ from redband.base import BaseConfig, REDBAND_CONFIG_CLASSES
 
 
 class Singleton(type):
-    def __init__(cls, name, bases, dict):
+    def __init__(cls, name, bases, dict) -> "Singleton":
         super(Singleton, cls).__init__(name, bases, dict)
         cls.instance = None
 
