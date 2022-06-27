@@ -2,8 +2,10 @@ import inspect
 from _collections_abc import dict_keys
 from typing import AbstractSet, Any, Dict, List, Mapping, Optional, Union
 
+from pydantic.error_wrappers import ValidationError
 from pydantic.fields import ModelField
 from pydantic_yaml import YamlModel as BaseModel
+from redband.typing import DictStrAny
 
 from redband.util import load_yaml, save_yaml
 
@@ -58,12 +60,42 @@ class BaseConfig(BaseModel):
         return cls.__fields__[param].get_default()
 
     @classmethod
+    def _set_param(cls, param_name: str, value: Any) -> None:
+        """"""
+
+        # TODO: if the param is a BaseConfig then value should NOT be a dict, it should be that config class type
+
+        old_field = cls.__fields__[param_name]
+        new_field = ModelField.infer(
+            name=param_name,
+            value=value,
+            annotation=old_field.type_,
+            class_validators=None,
+            config=cls.__config__,
+        )
+
+        # validate override that created the new field
+        _, error_ = new_field.validate(value, {}, loc=param_name)
+        if error_:
+            raise ValidationError([error_], cls)
+
+        cls.__fields__[param_name] = new_field
+
+    @classmethod
     def _group(cls) -> str:
         return cls._get_param("group__")
 
     @classmethod
     def _name(cls) -> str:
         return cls._get_param("name__") or cls.__name__
+
+    @classmethod
+    def _to_config_dict(cls) -> DictStrAny:
+        """Converts config to a dict representation."""
+        config_dict = {}
+        for k, v in cls.__fields__.items():
+            config_dict[k] = v.get_default()
+        return config_dict
 
     def __getitem__(self, attr_name: str) -> Any:
         return getattr(self, attr_name)
