@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 from redband.base import BaseConfig, EntrypointConfig, is_config_node
 from redband.cli import get_args_parser
 from redband.library import ConfigLibrary, fill_config_library
-from redband.merge import merge, merge_dicts
+from redband.merge import merge
 from redband.typing import ConfigFields, DictStrAny, JSON
 from redband import util as rb_util
 
@@ -64,33 +64,6 @@ def _get_yaml_name(entrypoint_yaml_name: Optional[str], cli_yaml_name: Optional[
         return yaml_name
 
 
-def _compose_overrides(entrypoint_config_class_fields: ConfigFields, overrides: List[str]) -> DictStrAny:
-    """#TODO: docstring + error handling"""
-    config_lib: ConfigLibrary = ConfigLibrary()
-    config_dict = {}
-    for override_str in overrides:
-        assert (
-            "=" in override_str and override_str.count("=") == 1
-        ), "Your command-line overrides must be of the form '<key>=<value>'"
-
-        key, value = override_str.split("=")
-        entrypoint_key, *nested_keys = key.split(".")
-        config_field = entrypoint_config_class_fields[entrypoint_key]
-        config_field_type = config_field.type_
-
-        if len(nested_keys) == 0:
-            if is_config_node(config_field_type):
-                config_group = config_lib.get_config_group(config_field_type._group())
-                value = config_group[value]
-            config_dict[entrypoint_key] = value
-
-        else:
-            # TODO:
-            ...
-
-    return config_dict
-
-
 def _validate_config_dict(node: Union[Any, Type[BaseConfig], ConfigDict]) -> ConfigDict:
     """TODO: docstring + get rid of Any in annotation (I need something)"""
 
@@ -105,6 +78,44 @@ def _validate_config_dict(node: Union[Any, Type[BaseConfig], ConfigDict]) -> Con
     # otherwise we have a 'vanilla' parameter => return
     else:
         return node
+
+
+def _compose_config_dict(entrypoint_config_class_fields: ConfigFields, config_dict: DictStrAny) -> DictStrAny:
+    """TODO: documentation + ConfigCompositionException etc."""
+
+    config_lib: ConfigLibrary = ConfigLibrary()
+    composed_config_dict = {}
+
+    for key, value in config_dict.items():
+
+        entrypoint_key, *nested_keys = key.split(".")
+        _cur_key, _cur_dict = entrypoint_key, composed_config_dict
+        config_field_type: Type[BaseConfig] = entrypoint_config_class_fields[_cur_key].type_
+
+        for sub_key in nested_keys:
+
+            # recurse further into nested keys
+            if _cur_key not in _cur_dict:
+                _cur_dict[_cur_key] = {}
+            _cur_dict = _cur_dict[_cur_key]
+            _cur_key = sub_key
+
+            # set type of potential sub-config
+            # TODO: check that I'm doing this right, potentially should be _cur_key not sub_key
+            if is_config_node(config_field_type):
+                nested_param = config_field_type._get_param(sub_key)
+                if is_config_node(nested_param):
+                    config_field_type: Type[BaseConfig] = nested_param
+                else:
+                    config_field_type = None
+
+        # fill value in depending on whether new node is a sub-config or a parameter
+        if is_config_node(config_field_type):
+            config_group = config_lib.get_config_group(config_field_type._group())
+            value = config_group[value]._to_config_dict()
+        _cur_dict[_cur_key] = value
+
+    return composed_config_dict
 
 
 def _compose_yaml(
@@ -124,33 +135,25 @@ def _compose_yaml(
     assert len(valid_yamls) == 1, "There is more than one matching YAML in your specified `yaml_path`"
     yaml_dict: Dict[str, JSON] = rb_util.load_yaml(str(valid_yamls[0]))
 
-    config_lib: ConfigLibrary = ConfigLibrary()
+    return _compose_config_dict(entrypoint_config_class_fields, yaml_dict.get("entrypoint"))
+
+
+def _compose_overrides(entrypoint_config_class_fields: ConfigFields, overrides: List[str]) -> DictStrAny:
+    """Constructs a config dict from the command-line overrides. These configs will be merged into the
+    final config object _last_ meaning they take precedence over the values defined in config classes in
+    code and the values defined in the entrypoint YAML.
+
+    Args:
+        entrypoint_config_class_fields:
+            the fields of the entrypoint config (for finding the correct config groups in the ConfigLibrary)
+        overrides: the list of string overrides as parsed by `cli.py`
+    """
     config_dict = {}
-
-    # iterate through YAML items, merging each into the `config_dict`
-    for key, value in yaml_dict.get("entrypoint").items():
-        entrypoint_key, *nested_keys = key.split(".")
-
-        # get information about field in entrypoint config
-        config_field = entrypoint_config_class_fields[entrypoint_key]
-        config_field_type = config_field.type_
-
-        # adding of a single parameter, either a config or parameter node
-        if len(nested_keys) == 0:
-            if is_config_node(config_field_type):
-                config_group = config_lib.get_config_group(config_field_type._group())
-                value = config_group[value]
-            config_dict[entrypoint_key] = value
-
-        # TODO: this is hard because if we're going deeper within configs we need to mutate in place
-        elif entrypoint_key in config_dict:
-            ...
-
-        #
-        else:
-            raise ConfigCompositionException("")  # TODO: come up with a nice error structure
-
-    return config_dict
+    for override_str in overrides:
+        assert override_str.count("=") == 1, "Your command-line overrides must be of the form '<key>=<value>'"
+        key, value = override_str.split("=")
+        config_dict[key] = value
+    return _compose_config_dict(entrypoint_config_class_fields, config_dict)
 
 
 def _compose(
@@ -208,9 +211,11 @@ def _compose(
     yaml_config_dict = _compose_yaml(entrypoint_config_class_fields, yaml_dir, yaml_name)
 
     # merge entrypoint YAML and overrides config dicts with the entrypoint config class, & validate
-    config_dict = merge_dicts(yaml_config_dict, overrides_config_dict)
-    config_dict = _validate_config_dict(config_dict)
-    entrypoint_config = entrypoint_config_class(**config_dict)
+    entrypoint_config_class = merge(entrypoint_config_class, yaml_config_dict)
+    entrypoint_config_class = merge(entrypoint_config_class, overrides_config_dict)
+    entrypoint_config = entrypoint_config_class()
+    # config_dict = _validate_config_dict(config_dict)
+    # entrypoint_config = entrypoint_config_class(**config_dict)
 
     return entrypoint_config
 
