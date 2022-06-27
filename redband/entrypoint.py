@@ -188,7 +188,6 @@ def _compose(
     config_dict = _validate_config_dict(config_dict)
 
     # merge YAML + overrides with entrypoint config class, & validate
-    # TODO: should I use .merge()? Do I even need a .merge() function?
     entrypoint_config = entrypoint_config_class(**config_dict)
 
     return entrypoint_config
@@ -200,7 +199,41 @@ def entrypoint(
     yaml_path: Optional[str] = None,
     config_lib_dir: Optional[str] = None,
 ) -> Callable[[EntrypointFunc], Any]:
-    """#TODO: docstring"""
+    """This decorator adds Redband's core functionality to any Python script. By decorating your entrypoint
+    function with with this decorator you specify that said function expects a single argument: the composed
+    config of the type defined by your entrypoint config class.
+
+    ```
+        class MyEntrypointConfig(redband.EntrypointConfig):
+            ...
+
+        @redband.entrypoint(yaml_name="dootdoot")
+        def do_main_thing(config: MyEntrypointConfig):
+            ...
+
+        if __name__ == "__main__":
+            do_main_thing()
+    ```
+
+    Your entrypoint function (`do_main_thing`) contains all the domain-specific code that you wish; all Redband does
+    is compose and pass it a config object derived from the combination of
+        1. predefined config classes (that have been added to the `ConfigLibrary`)
+        2. the entrypoint config definition
+        3. an optional entrypoint YAML
+        4. any command-line overrides
+
+    Args:
+        _entrypoint_func: the entrypoint function, non-None if the decorator is used without arugments
+        yaml_name:
+            the name of an entrypoint YAML file (the filename excluding extension in the same directory as
+            the entrypoint script)
+        yaml_path:
+            the path to an entrypoint YAML from which to load default config values (this supercedes
+            `yaml_name` as the full path must include a name).
+        config_lib_dir:
+            the directory in which your config classes are defined. This can also be handled via setting
+            the 'RB_CONFIG_LIB_DIR' environment variable or using the `--config-lib-dir` command-line option
+    """
 
     # validate that arguments are formatted correctly
     assert yaml_name is None or (
@@ -212,6 +245,9 @@ def entrypoint(
     assert config_lib_dir is None or (
         rb_util._is_local_path(config_lib_dir) and rb_util.file_exists(config_lib_dir)
     ), "If you pass a `config_lib_dir` it must be the path to a local _directory_ that exists"
+    assert (
+        yaml_path is None or yaml_name is None
+    ), "You cannot specify both a `yaml_name` and a `yaml_path` (the latter supercedes the former)"
 
     def entrypoint_decorator(entrypoint_func: EntrypointFunc) -> Callable[[], None]:
         @functools.wraps(entrypoint_func)
